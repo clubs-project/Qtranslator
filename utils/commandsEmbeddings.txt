@@ -1,0 +1,12 @@
+cut -f3 -d' ' final.50.shuf.bpe.de.json | sed 's/^"//' | sed 's/"://' | sed '1,1d' | sed '$d' | sed 's/\\"/"/' > vocab.de
+cut -f3 -d' ' final.50.shuf.bpe.en.json | sed 's/^"//' | sed 's/"://' | sed '1,1d' | sed '$d' | sed 's/\\"/"/' > vocab.en
+cut -f3 -d' ' final.50.shuf.bpe.fr.json | sed 's/^"//' | sed 's/"://' | sed '1,1d' | sed '$d' | sed 's/\\"/"/' > vocab.fr
+cut -f3 -d' ' final.50.shuf.bpe.es.json | sed 's/^"//' | sed 's/"://' | sed '1,1d' | sed '$d' | sed 's/\\"/"/' > vocab.es
+    
+python -c "import numpy; embedding = numpy.load('model_v150k.npz')['Wemb']; numpy.savetxt('embeddingsL1.nem', embedding, fmt='%0.6f')"
+paste -d' ' vocabL1 embeddingsL1.nem > embeddingsL1.w2v
+
+(nohup perl extractLinesWords.perl vocab.50.en embeddingsL1.w2v > embeddingsL1.en.w2v)&
+(nohup perl extractLinesWords.perl vocab.45.es embeddingsL1.w2v > embeddingsL1.es.w2v)&
+(nohup perl extractLinesWords.perl vocab.50.fr embeddingsL1.w2v > embeddingsL1.fr.w2v)&
+(nohup perl extractLinesWords.perl vocab.50.de embeddingsL1.w2v > embeddingsL1.de.w2v)&
