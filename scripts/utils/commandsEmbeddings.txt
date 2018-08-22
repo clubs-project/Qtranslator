@@ -10,3 +10,10 @@ paste -d' ' vocabL1 embeddingsL1.nem > embeddingsL1.w2v
 (nohup perl extractLinesWords.perl vocab.45.es embeddingsL1.w2v > embeddingsL1.es.w2v)&
 (nohup perl extractLinesWords.perl vocab.50.fr embeddingsL1.w2v > embeddingsL1.fr.w2v)&
 (nohup perl extractLinesWords.perl vocab.50.de embeddingsL1.w2v > embeddingsL1.de.w2v)&
+
+python3 solriseEmbeddings.py ../../models/embeddingsL1.en.w2v ../../models/embeddingsL1solr.en.w2v
+python3 solriseEmbeddings.py ../../models/embeddingsL1.es.w2v ../../models/embeddingsL1solr.es.w2v
+python3 solriseEmbeddings.py ../../models/embeddingsL1.fr.w2v ../../models/embeddingsL1solr.fr.w2v
+python3 solriseEmbeddings.py ../../models/embeddingsL1.de.w2v ../../models/embeddingsL1solr.de.w2v
+1python3 solriseEmbeddings.py ../../models/embeddingsL1.w2v ../../models/embeddingsL1solr.w2v
+
