@@ -15,5 +15,5 @@ python3 solriseEmbeddings.py ../../models/embeddingsL1.en.w2v ../../models/embed
 python3 solriseEmbeddings.py ../../models/embeddingsL1.es.w2v ../../models/embeddingsL1solr.es.w2v
 python3 solriseEmbeddings.py ../../models/embeddingsL1.fr.w2v ../../models/embeddingsL1solr.fr.w2v
 python3 solriseEmbeddings.py ../../models/embeddingsL1.de.w2v ../../models/embeddingsL1solr.de.w2v
-1python3 solriseEmbeddings.py ../../models/embeddingsL1.w2v ../../models/embeddingsL1solr.w2v
+python3 solriseEmbeddings.py ../../models/embeddingsL1.w2v ../../models/embeddingsL1solr.w2v
 

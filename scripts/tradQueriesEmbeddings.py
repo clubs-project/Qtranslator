@@ -20,11 +20,11 @@ class QueryTrad(object):
 
     # File location
     # TODO: config file
-    modelPath = "../../models/"
-    ctFile = modelPath + "CT/meshSplit2.concat.lc.txt"
+    modelPath = "../models/"
+    ctFile = modelPath + "CT/meshSplit2.solr.all-languages.txt"
     swFile = modelPath + "DeEnEsFr.plain.sw"
     BPEcodes = modelPath + "L1L2.final.bpe"
-    embeddingRoot = modelPath + "embeddingsL1."
+    embeddingRoot = modelPath + "embeddingsL1solr."
 
     numTermsUntrad = 0
     numTerms = 0
@@ -48,6 +48,8 @@ class QueryTrad(object):
         # data ordered as es->fr->de->en so that in case of ambiguity 'en' remains
         for line in open(self.ctFile):
             line = line.strip()
+            if (line.startswith('<<<')):  #the new version of the dictionary has a comment line
+               continue
             source, targets = line.split("|||",1)
             ctDict[source] = targets
         mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -206,6 +208,7 @@ def translate(string, proc):
                    print(esSubunit)
                    print(deSubunit)
                    print(frSubunit)
+              # we need to reconstruct BPE
 
     return stringTrad
 

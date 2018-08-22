@@ -29,6 +29,7 @@ def process(source_word):
     - replaces 'ß' with 'ss' 
     - replaces punctuation including hyphens with whitespace
     - keeps BPE notation
+    - adapts to w2v notation (no white spaces in a word)
     '''
  
     addBPEsep = False
@@ -42,7 +43,9 @@ def process(source_word):
     source_word = unicodedata.normalize('NFKD', source_word).encode('ASCII', 'ignore').decode()
     # String.punctuation only knows ASCII punctuation
     source_word = replace_punctuation(source_word)
+    # Preparing for w2v representation
     source_word = source_word.rstrip()
+    source_word = source_word.replace(' ', '_')
     if (addBPEsep == True):
         source_word = source_word + BPEseparator
     return source_word 
