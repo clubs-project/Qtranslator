@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """ Given a quadlexion, it extracts training samples (positive and negative) 
-    for reranking and several features features.
+    for reranking word embeddings and several features associated to each sample.
     Current features include:
-    - words and languages (w1, L1, w2, L2)
-    - Levenshtein distance between tokens w1 and w2
-    - length in characters without bpe mark @@ (s1, s2, s1/s2)
-    - embeddings: rank and cosine similarity (rank, dWE)
-    - character n-gram similarity (n2, n3, n4)
-    - Levenshtein distance between Metaphone 2 phonetic keys
+    - (4) words and languages (w1, L1, w2, L2)
+    - (2) subunits: source is a BPE subunit --instead of word--, or src and tgt 
+          have a BPE mark (srcSubUnit, bothBPEmark)
+    - (1) Levenshtein distance between tokens w1 and w2 (lev)
+    - (3) length in characters without bpe mark @@ (l1,l2,l1/l2)
+    - (2) embeddings: rank and cosine similarity (rankW2, cosSimWE)
+    - (3) character n-gram similarity (cosSimN2,cosSimN3,cosSimN4)
+    - (1) Levenshtein distance between Metaphone 2 phonetic keys (levM2)
     
     Date: 22.08.2018
     Author: cristinae
@@ -30,13 +32,21 @@ import phonetics
 
 bpeMark = '@@'
 emptyMark = 'EMPTY'
-
+header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,rankW2,cosSimWE,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+# for debugging
+countUp = 0 
+countDown = 0
 
 def findNonTrad(w1, l1, w2, l2, proc):
     '''
     Find a word nonTrad which is close to the true translation of w1, w2, but it is not.
-    This will be used as a negative example
+    Currently we use the word that is +1 or -1 in the cosine similarity ranking.
+    This word will be used as a negative example
+    Probably good for margin-based algorithms, but for others?
     '''
+
+    global countUp 
+    global countDown
 
     if w1 not in proc.embeddingL1.vocab:
        return 0,emptyMark,0
@@ -65,10 +75,15 @@ def findNonTrad(w1, l1, w2, l2, proc):
        w2Rank = newSpace.rank(w1,w2)
        if w2Rank == 1:           # if w1 was the top1 we can only do rank+1
           rank = 2
+          countUp = countUp+1
        else:                     # if not, we can randomly select rank +-1
                                  # we give higher probability to -1 to get a balanced corpus
-          sumVal = np.random.choice([-1, 1], size=1, p=[2./3, 1./3])
+          sumVal = np.random.choice([-1, 1], size=1, p=[5./6, 1./6])
           rank = w2Rank + sumVal[0]
+          if sumVal[0]==1:
+             countUp = countUp+1
+          if sumVal[0]==-1:
+             countDown = countDown+1
  
        # we look for the rank_th word
        toprank = newSpace.similar_by_vector(vector,topn=rank)
@@ -190,7 +205,6 @@ def main(inF):
     proc = load.QueryTrad(modelPath)
 
     outF = inF+'.feat'
-    header = 'Gold,w1,L1,w2,L2,isSubUnit,rankW2,cosSimWE,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levenM2\n'
     fOUT = open(outF, 'w')
     fOUT.write(header)
     # Read the quad-lexicon
@@ -227,24 +241,28 @@ def main(inF):
                   # we look for a negative example (bad translation of source_word)
                   w2Rank,tNeg,rank = findNonTrad(source_word, src_lang, t, l, proc)
                   # basic features, including rank in WE similarity 
-                  pairPos = source_word +","+ src_lang +","+ t +","+ l +","+isWord+","+str(w2Rank)+","
+                  bothBPE = '0'
+                  pairPos = source_word +","+src_lang+","+ t +","+ l +","+isWord+","+bothBPE+","+str(w2Rank)+","
                   # extraction of non-basic features
                   featsPos = extractFeatures(source_word, t, proc)
                   entriesOutput = entriesOutput +"1,"+ pairPos + featsPos +"\n"
                   # add features for a negative example in case there is one 
                   if tNeg is not "EMPTY":
-                     pairNeg = source_word +","+ src_lang +","+ tNeg +","+ l +","+isWord+","+str(rank)+","
+                     pairNeg = source_word +","+ src_lang +","+ tNeg +","+ l +","+isWord+","+bothBPE+","+str(rank)+","
                      featsNeg = extractFeatures(source_word, tNeg, proc)
                      entriesOutput = entriesOutput +"0,"+ pairNeg + featsNeg +"\n" 
                # if the input token has been bped do the same for all the subunits
                else:
                   for subunit_src, subunit_tgt in zip(units, tunits):
+                      bothBPE = '0'
+                      if bpeMark in subunit_src and bpeMark in subunit_tgt:
+                         bothBPE = '1'
                       w2Rank,tNeg,rank = findNonTrad(subunit_src, src_lang, subunit_tgt, l, proc)
-                      pairPos = subunit_src +","+ src_lang +","+ subunit_tgt +","+ l +","+isSubword+","+str(w2Rank)+","
+                      pairPos = subunit_src +","+ src_lang +","+ subunit_tgt +","+ l +","+isSubword+","+bothBPE+","+str(w2Rank)+","
                       featsPos = extractFeatures(subunit_src, subunit_tgt, proc)
                       entriesOutput = entriesOutput +"1,"+ pairPos + featsPos +"\n" 
                       if tNeg is not "EMPTY":
-                         pairNeg = subunit_src +","+ src_lang +","+ tNeg +","+ l +","+isSubword+","+str(rank)+","
+                         pairNeg = subunit_src +","+ src_lang +","+ tNeg +","+ l +","+isSubword+","+bothBPE+","+str(rank)+","
                          featsNeg = extractFeatures(subunit_src, tNeg, proc)
                          entriesOutput = entriesOutput +"0,"+ pairNeg + featsNeg +"\n" 
 
@@ -254,6 +272,10 @@ def main(inF):
                continue
            fOUT.write(entriesOutput)
 
+
+    print("\nDone")
+    print("countUp: "+str(countUp))
+    print("countDown: "+str(countDown))
 
     fOUT.close()   
 
