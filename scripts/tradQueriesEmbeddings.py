@@ -10,80 +10,11 @@
 """
 
 import sys
-import resource
 import os.path
 import unicodedata
+import load
 import easyBPE
 from gensim.models import KeyedVectors
-
-class QueryTrad(object):
-
-    # File location
-    # TODO: config file
-    modelPath = "../models/"
-    ctFile = modelPath + "CT/meshSplit2.solr.all-languages.txt"
-    swFile = modelPath + "DeEnEsFr.plain.sw"
-    BPEcodes = modelPath + "L1L2.final.bpe"
-    embeddingRoot = modelPath + "embeddingsL1solr."
-
-    numTermsUntrad = 0
-    numTerms = 0
-    numWordsUntrad = 0
-    numWords = 0
-
-    def __init__(self):
-
-        # Load stopword plain file
-        swList = {}
-        for line in open(self.swFile):
-            line = line.strip()
-            swList[line] = 1
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..List of stop words loaded. Using "+str(mem)+" MB of memory")
-        self.swList = swList
-
-        # Load the lexicon
-        ctDict = {}
-        targets = []
-        # data ordered as es->fr->de->en so that in case of ambiguity 'en' remains
-        for line in open(self.ctFile):
-            line = line.strip()
-            if (line.startswith('<<<')):  #the new version of the dictionary has a comment line
-               continue
-            source, targets = line.split("|||",1)
-            ctDict[source] = targets
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..Multilingual lexicon loaded. Using "+str(mem)+" MB of memory")
-        self.ctDict = ctDict
-
-       # Load BPE model
-        self.bpe = easyBPE.BPE(self.BPEcodes)
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..BPE model loaded. Using "+str(mem)+" MB of memory")
-
-        # Load embeddings
-        self.embeddingL1 = KeyedVectors.load_word2vec_format(self.embeddingRoot+'w2v', binary=False)
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("\n..Multilingual embeddings loaded. Using "+str(mem)+" MB of memory")
-        self.embeddingEn = KeyedVectors.load_word2vec_format(self.embeddingRoot+'en.w2v')
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..English embeddings loaded. Using "+str(mem)+" MB of memory")
-        self.embeddingEs = KeyedVectors.load_word2vec_format(self.embeddingRoot+'es.w2v')
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..Spanish embeddings loaded. Using "+str(mem)+" MB of memory")
-        self.embeddingDe = KeyedVectors.load_word2vec_format(self.embeddingRoot+'de.w2v')
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..German embeddings loaded. Using "+str(mem)+" MB of memory")
-        self.embeddingFr = KeyedVectors.load_word2vec_format(self.embeddingRoot+'fr.w2v')
-        mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        print("..French embeddings loaded. Using "+str(mem)+" MB of memory\n")
- 
-    def getCtDict(self):
-        return self.ctDict
-
-    def getSWlist(self):
-        return self.swList
-
 
 def rreplace(s, old, new, occurrence):
     """ Replace last occurrence of a substring in a string
@@ -215,8 +146,9 @@ def translate(string, proc):
 
 def main(inF, outF):
 
-    # Initialise a new process for translation
-    proc = QueryTrad()
+    modelPath = "../models/"
+    # Initialise a new process for translation, loading the models
+    proc = load.QueryTrad(modelPath)
 
     # Read the queries from file
     fOUT = open(outF, 'w')
