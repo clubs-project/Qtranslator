@@ -105,8 +105,11 @@ def extractFeatures(w1, w2, proc):
 
     # length of the inputs
     s1 = w1.replace(bpeMark, '')
-    s2 = w2.replace(bpeMark, '')
-    lengths = str(len(s1))+','+str(len(s2))+','+str("{0:.2f}".format(len(s1)/len(s2)))
+    s2 = w2.replace(bpeMark, '')    
+    try:            
+      lengths = str(len(s1))+','+str(len(s2))+','+str("{0:.2f}".format(len(s1)/len(s2)))
+    except ZeroDivisionError:
+      lengths = str(len(s1))+','+str(len(s2))+','+str("{0:.2f}".format(0.00))
 
     # Levenshtein between tokens
     leven = Levenshtein.distance(w1, w2)
