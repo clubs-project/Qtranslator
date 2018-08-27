@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
 from xgboost import plot_importance
 from sklearn import metrics
@@ -37,32 +38,38 @@ def main(inF):
     # shuffle all examples to mix all types
     df4ML = df.sample(frac=1)
     # convert categorical column in four binary columns, one per language
-    df4ML = df4ML.join(pd.get_dummies(df['L1'],prefix='L1'))
     df4ML = df4ML.join(pd.get_dummies(df['L2'],prefix='L2'))
 
     # Original features
-    #feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','rankW2','cosSimWE','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+    #feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
     # Features to use
-    feature_cols = ['L1_de','L1_es','L1_en','L1_fr','L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','rankW2','cosSimWE','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+    feature_cols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+    #feature_cols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+
+
 
     # scale columns
     # rankW2 has huge numbers in a wide interval, we should cut and/or move to a log scale
     df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 1000 if x>1000 else x)
     #df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 0 if x<= 0 else math.log10(x))
 	
-    #colums2scale = ['rankW2','cosSimWE','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
-    colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2']
+    #colums2scale = ['rankW2','WEsim','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+    colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2','simRankt1','simRankWnext','simRankt10','simRankt100']
     scaler = MinMaxScaler()
     df4ML[colums2scale] = scaler.fit_transform(df4ML[colums2scale])
 
     scoring = ['accuracy', 'precision_macro', 'recall_macro']
     X = df4ML.loc[:, feature_cols]
     y = df4ML.Gold
-    clf = XGBClassifier(max_depth=5, n_estimators=300, learning_rate=0.05)
+    clf = XGBClassifier(max_depth=6, n_estimators=300, learning_rate=0.05)
+    #clf = MLPClassifier(activation='relu', alpha=1e-05, batch_size='auto',
+    #   beta_1=0.9, beta_2=0.999, early_stopping=False, epsilon=1e-08, hidden_layer_sizes=(8, 2), learning_rate='constant',
+    #   learning_rate_init=0.001, max_iter=200, momentum=0.9, nesterovs_momentum=True, power_t=0.5, random_state=1, shuffle=True,
+    #   solver='lbfgs', tol=0.0001, validation_fraction=0.1, verbose=False, warm_start=True)
     #clf = SVC(kernel='rbf')
     #clf = SVC(kernel='linear')
 
-    scores = cross_validate(clf, X, y, scoring=scoring, cv=5, return_train_score=False)
+    scores = cross_validate(clf, X, y, scoring=scoring, cv=10, return_train_score=False)
     #print(scores['test_precision_macro'])
     #print(scores['test_recall_macro'])
     #print(scores['test_accuracy'])

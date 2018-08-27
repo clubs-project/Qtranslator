@@ -9,7 +9,8 @@
           have a BPE mark (srcSubUnit, bothBPEmark)
     - (1) Levenshtein distance between tokens w1 and w2 (lev)
     - (3) length in characters without bpe mark @@ (l1,l2,l1/l2)
-    - (2) embeddings: rank and cosine similarity (rankW2, cosSimWE)
+    - (6) embeddings: cosine similarity, rank, distances in similarities to certain ranks 
+          (WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100)
     - (3) character n-gram similarity (cosSimN2,cosSimN3,cosSimN4)
     - (1) Levenshtein distance between Metaphone 2 phonetic keys (levM2)
     
@@ -19,63 +20,70 @@
 
 import sys
 import os.path
-from collections import defaultdict as ddict
-import math
 import numpy as np 
 
 import load
 import easyBPE
+import features
 
 from gensim.models import KeyedVectors
-import Levenshtein 
-import phonetics
 
 bpeMark = '@@'
 emptyMark = 'EMPTY'
-header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,rankW2,cosSimWE,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+
 # for debugging
 countUp = 0 
 countDown = 0
 
-def findNonTrad(w1, l1, w2, l2, proc):
+def findSimsNonTrad(w1, w2, l2, proc):
     '''
     Find a word nonTrad which is close to the true translation of w1, w2, but it is not.
-    Currently we use the word that is +1 or -1 in the cosine similarity ranking.
-    This word will be used as a negative example
-    Probably good for margin-based algorithms, but for others?
+    Currently we use the word that is +1 or -1 in the cosine similarity ranking. 
+    For top1 translations we use top2 as negative example; for top5 traslations we consider 
+    top1 a negative example instead of the closest one.
+    Probably good for margin-based algorithms, but for others, should it be random?
     '''
 
     global countUp 
     global countDown
+    noSimsRank = '0,0,0,0,0,0,'
+    #WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100
 
     if w1 not in proc.embeddingL1.vocab:
-       return 0,emptyMark,0
+       return noSimsRank,emptyMark,noSimsRank
 
+    #TODO I probably can do everything with L1, and use vocabularies for languages
     vector =  proc.embeddingL1[w1]
     # Load the adequate subembeddings
-    newSpace = proc.embeddingEn
     try:
-       if l2 is "en":
-          pass
-       elif l2 is "de":
+       if l2 == "en":
+          newSpace = proc.embeddingEn
+       elif l2 == "de":
           newSpace = proc.embeddingDe
-       elif l2 is "es":
+       elif l2 == "es":
           newSpace = proc.embeddingEs
-       elif l2 is "fr":
+       elif l2 == "fr":
           newSpace = proc.embeddingFr
     except ValueError:
+       newSpace = None 
        print("No correct language specified")   
 
     # add the source word to the target language subspace
     # since que cannot remove a word afterwards we create a new space
     newSpace.add(w1,vector,replace=True)
-    # we look for the closest alternative to w2 (+1 or -1 in rank) to create an
-    # entry for a non-translation 
+    maxSize = len(newSpace.vocab)
+    # we look for a non-translation 
     if w2 in newSpace.vocab:
        w2Rank = newSpace.rank(w1,w2)
+       if w2Rank>20000:  # we are not going to rerank so many and introduces errors
+          return noSimsRank,emptyMark,noSimsRank
        if w2Rank == 1:           # if w1 was the top1 we can only do rank+1
           rank = 2
           countUp = countUp+1
+       #elif w2Rank < 6:         # for top5 we give top1 as negative example
+       #   rank = 1
+       #   countDown = countDown+1
        else:                     # if not, we can randomly select rank +-1
                                  # we give higher probability to -1 to get a balanced corpus
           sumVal = np.random.choice([-1, 1], size=1, p=[5./6, 1./6])
@@ -85,96 +93,52 @@ def findNonTrad(w1, l1, w2, l2, proc):
           if sumVal[0]==-1:
              countDown = countDown+1
  
-       # we look for the rank_th word
-       toprank = newSpace.similar_by_vector(vector,topn=rank)
-       nonTrad = toprank[-1][0]
+       # we look for the rank_th word to extract the token of the non-translation
+       #toprank = newSpace.similar_by_vector(vector,topn=rank)
+       if rank > w2Rank:
+          tmp = rank
+       else:
+          tmp = w2Rank
+       explore=tmp+100
+       if (explore > maxSize-1):
+           explore = maxSize-1
+       if (tmp+10 > maxSize-1):
+           explore = maxSize-1
+  
+       toprank = newSpace.similar_by_vector(vector,topn=explore)
+       #print("out lenToprank1: "+str(len(toprank))+" "+str(len(newSpace.vocab)))
+       #toprank2 = newSpace.similar_by_word(w1,topn=explore)
+       # does not keep track of the index of a new added word
+       if rank <= len(toprank):
+          nonTrad = toprank[rank-1][0]
+       else:   # This should not happen but happens without the cut at 20000 (error above)
+          nonTrad = toprank[len(toprank)-1][0]
+          print("kk")
+         
+       # since all calculations are ready here we use them to estimate WE-related features
+       # for the negative example
+       sim = newSpace.similarity(w1,nonTrad)
+       simRankt1 = toprank[rank-1][1] - toprank[0][1]  # how far in similarity is noTrad to top1
+       simRanktnext = toprank[rank-1][1] - toprank[rank][1]  # how far in similarity is noTrad to the next word
+       simRankt10 = toprank[rank-1][1] - toprank[9][1] # how far in similarity is noTrad to top10
+       simRankt100 = toprank[rank-1][1] - toprank[99][1] # how far in similarity is noTrad to top100
+       simsRankNoTrad = str(sim)+','+str(rank)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
+       # for the positive example
+       sim = newSpace.similarity(w1,w2)
+       simRankt1 = toprank[w2Rank-1][1] - toprank[0][1]  # how far in similarity is w2 to top1
+       simRanktnext = toprank[w2Rank-1][1] - toprank[w2Rank][1]  # how far in similarity is w2 to the next word
+       simRankt10 = toprank[w2Rank-1][1] - toprank[9][1] # how far in similarity is w2 to top10
+       simRankt100 = toprank[w2Rank-1][1] - toprank[99][1] # how far in similarity is w2 to top100
+       simsRankW2 = str(sim)+','+str(w2Rank)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
+       
     else:
-       return 0,emptyMark,0
+       return noSimsRank,emptyMark,noSimsRank
 
     # cleaning
     newSpace = None
 
-    return w2Rank, nonTrad, rank
+    return simsRankW2, nonTrad, simsRankNoTrad
 
-
-def extractFeatures(w1, w2, proc):
-    '''
-    Extracts the set of features for a pair of word (w1, w2)
-    Returns a string with a cvs format for the features
-    '''
-
-    # length of the inputs
-    s1 = w1.replace(bpeMark, '')
-    s2 = w2.replace(bpeMark, '')    
-    try:            
-      lengths = str(len(s1))+','+str(len(s2))+','+str("{0:.2f}".format(len(s1)/len(s2)))
-    except ZeroDivisionError:
-      lengths = str(len(s1))+','+str(len(s2))+','+str("{0:.2f}".format(0.00))
-
-    # Levenshtein between tokens
-    leven = Levenshtein.distance(w1, w2)
-
-    # cosine similarity between common n-grams
-    n2 = round(char_ngram(w1, w2, 2),4)
-    n3 = round(char_ngram(w1, w2, 3),4)
-    n4 = round(char_ngram(w1, w2, 4),4)
-    ngrams = str(n2)+','+str(n3)+','+str(n4)
-
-    # cosine similarity between word embeddings
-    if w1 in proc.embeddingL1.vocab and w2 in proc.embeddingL1.vocab:
-       dWE = proc.embeddingL1.similarity(w1, w2)
-    else:
-       dWE = 0
-
-    # Levenshtein between Metaphone 2 phonetic keys of the tokens
-    # TODO: port the java version of metaphone 3
-    w1M2 = phonetics.dmetaphone(w1)
-    w2M2 = phonetics.dmetaphone(w2)
-    levenM2 = Levenshtein.distance(w1M2[0], w2M2[0])
-
-    features = str(dWE) +','+ lengths+','+str(leven)+','+ ngrams +','+ str(levenM2)
-    return features
-
-
-def cosine_sim(dictionary):
-    '''
-    Cosine similarity estimation for the dictionaries
-    from https://github.com/adamcsvarga/parallel_creator/blob/master/rerank/rerank.py
-    '''
-
-    cosine_sim = 0
-    for value in dictionary.values():
-        cosine_sim += value[0] * value[1]
-
-    length1 = sum([value[0] ** 2 for value in dictionary.values()]) 
-    length2 = sum([value[1] ** 2 for value in dictionary.values()])
-    
-    try:            
-        cosine_sim /= math.sqrt(length1) * math.sqrt(length2)
-    except ZeroDivisionError:
-        cosine_sim = 0
-        
-    return cosine_sim
-
-
-def char_ngram(w1, w2, n=2):
-    '''
-    cosine distance of n-gram character vectors
-    from https://github.com/adamcsvarga/parallel_creator/blob/master/rerank/rerank.py
-    '''
-    
-    ngramdict = ddict(lambda: ddict(lambda: 0))
-    line_pair = [w1, w2]
-    
-    for i, line in enumerate(line_pair):
-        line = ''.join(line.split())
-        j = 0
-        while (j + (n - 1)) < len(line):
-            ngramdict[line[j:j+n]][i] += 1
-            j += 1
-    
-    return cosine_sim(ngramdict)
-   
 
 
 def sourceLang(entry):
@@ -242,32 +206,33 @@ def main(inF):
 
                if len(units)==1:
                   # we look for a negative example (bad translation of source_word)
-                  w2Rank,tNeg,rank = findNonTrad(source_word, src_lang, t, l, proc)
-                  # basic features, including rank in WE similarity 
+                  # and retrieve semantic features for them
+                  simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(source_word, t, l, proc)
+                  # basic and semantic features features  
                   bothBPE = '0'
-                  pairPos = source_word +","+src_lang+","+ t +","+ l +","+isWord+","+bothBPE+","+str(w2Rank)+","
-                  # extraction of non-basic features
-                  featsPos = extractFeatures(source_word, t, proc)
-                  entriesOutput = entriesOutput +"1,"+ pairPos + featsPos +"\n"
+                  pairPos = features.basicFeatures(source_word,src_lang,t,l,isWord,bothBPE)
+                  # extraction of lexical features
+                  featsPos = features.extractLexFeatures(source_word, t)
+                  entriesOutput = entriesOutput +"1,"+ pairPos + simsRankW2 + featsPos +"\n"
                   # add features for a negative example in case there is one 
                   if tNeg is not "EMPTY":
-                     pairNeg = source_word +","+ src_lang +","+ tNeg +","+ l +","+isWord+","+bothBPE+","+str(rank)+","
-                     featsNeg = extractFeatures(source_word, tNeg, proc)
-                     entriesOutput = entriesOutput +"0,"+ pairNeg + featsNeg +"\n" 
+                     pairNeg = features.basicFeatures(source_word,src_lang,tNeg,l,isWord,bothBPE)
+                     featsNeg = features.extractLexFeatures(source_word, tNeg)
+                     entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
                # if the input token has been bped do the same for all the subunits
                else:
                   for subunit_src, subunit_tgt in zip(units, tunits):
                       bothBPE = '0'
                       if bpeMark in subunit_src and bpeMark in subunit_tgt:
                          bothBPE = '1'
-                      w2Rank,tNeg,rank = findNonTrad(subunit_src, src_lang, subunit_tgt, l, proc)
-                      pairPos = subunit_src +","+ src_lang +","+ subunit_tgt +","+ l +","+isSubword+","+bothBPE+","+str(w2Rank)+","
-                      featsPos = extractFeatures(subunit_src, subunit_tgt, proc)
-                      entriesOutput = entriesOutput +"1,"+ pairPos + featsPos +"\n" 
+                      simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(subunit_src, subunit_tgt, l, proc)
+                      pairPos = features.basicFeatures(subunit_src,src_lang,subunit_tgt,l,isSubword,bothBPE)
+                      featsPos = features.extractLexFeatures(subunit_src, subunit_tgt)
+                      entriesOutput = entriesOutput +"1,"+ pairPos + simsRankW2 + featsPos +"\n" 
                       if tNeg is not "EMPTY":
-                         pairNeg = subunit_src +","+ src_lang +","+ tNeg +","+ l +","+isSubword+","+bothBPE+","+str(rank)+","
-                         featsNeg = extractFeatures(subunit_src, tNeg, proc)
-                         entriesOutput = entriesOutput +"0,"+ pairNeg + featsNeg +"\n" 
+                         pairNeg = features.basicFeatures(subunit_src,src_lang,tNeg,l,isSubword,bothBPE)
+                         featsNeg = features.extractLexFeatures(subunit_src, tNeg)
+                         entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
 
            if (single == False):     
                continue
