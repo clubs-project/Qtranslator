@@ -12,9 +12,13 @@
 import sys
 import os.path
 import unicodedata
+
 import load
 import easyBPE
+import features
 from gensim.models import KeyedVectors
+
+bpeMark = '@@'
 
 def rreplace(s, old, new, occurrence):
     """ Replace last occurrence of a substring in a string
@@ -100,11 +104,6 @@ def translate(string, proc):
     string=cleanEndString(string)
     capitalized, toTrad =  checkCase(string, ctDict)
     print(toTrad)
-    #if (complete):
-    #    numTerms += 1
-    #    words = string.split(" ")
-    #    numWords = numWords + len(words)
-    # entries are read in a specific language order (python >3.6)
     stringTrad = ""
     # First we check if the full phrase is in the lexicon
     if toTrad in ctDict:
@@ -124,18 +123,30 @@ def translate(string, proc):
             if toTrad in ctDict:
                stringTrad = stringTrad + extractTradFromDict(toTrad, capitalized, stringTrad, ctDict)
             else:
-           # if not, we look for the closest translation(s) in the embeddings space
+            # if not, we look for the closest translation(s) in the embeddings space
+               isSubWord = 0
                bped = easyBPE.applyBPE(proc.bpe, word)
+               if len(bped) >1:
+                  isSubWord = 1
                for subunit in bped:
                    print(subunit)
                    vector =  proc.embeddingL1[subunit]
-                   allSubunit = proc.embeddingL1.similar_by_vector(vector,topn=5)
-                   enSubunit = proc.embeddingEn.similar_by_vector(vector,topn=2)
+                   #allSubunit = proc.embeddingL1.similar_by_vector(vector,topn=5)
+                   enSubunits = proc.embeddingEn.similar_by_vector(vector,topn=1000)
+                   for subunitTrad in enSubunits:
+                       w2 = subunit[0]
+                       bothBPE = '0'
+                       if bpeMark in subunit and bpeMark in w2:
+                         bothBPE = '1'
+                       basicFeats = features.basicFeatures(subunit,'xx', w2, 'en', isSubWord, bothBPE)
+                       semFeats = features.extractSemFeatures(subunit, w2, 'en', proc)
+                       lexFeats = features.extractLexFeatures(subunit, w2)
+                       #featureString = S'HA DE FER EL MATEIX CLEANING Q AL TRAINING
+
                    esSubunit = proc.embeddingEs.similar_by_vector(vector,topn=2)
                    deSubunit = proc.embeddingDe.similar_by_vector(vector,topn=2)
                    frSubunit = proc.embeddingFr.similar_by_vector(vector,topn=2)
-                   print(allSubunit)
-                   print(enSubunit)
+                   print(enSubunits)
                    print(esSubunit)
                    print(deSubunit)
                    print(frSubunit)
