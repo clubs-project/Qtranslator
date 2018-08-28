@@ -18,7 +18,11 @@ import Levenshtein
 import phonetics
 
 bpeMark = '@@'
+header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
 
+
+def getHeader():
+    return header
 
 def basicFeatures(w1, l1, w2, l2, isSubWord, bothBPE):
     '''
@@ -26,9 +30,7 @@ def basicFeatures(w1, l1, w2, l2, isSubWord, bothBPE):
     '''
     return w1+","+l1+","+ w2+","+l2+","+isSubWord+","+bothBPE+","
 
-
-
-def extractSemFeatures(w1, w2, l2, proc):
+def extractSemFeatures(w1, w2, l2, nexplore, proc):
     '''
     Extracts the set of semantic features related to word embeddings for a pair of word (w1, w2)
     Returns a string with a cvs format for the features
@@ -61,14 +63,10 @@ def extractSemFeatures(w1, w2, l2, proc):
     newSpace.add(w1,vector,replace=True)
     if w2 in newSpace.vocab:
        w2Rank = newSpace.rank(w1,w2)
-       toprank = newSpace.similar_by_vector(vector,topn=explore)
        sim = newSpace.similarity(w1,w2)
-       simRankt1 = toprank[w2Rank-1][1] - toprank[0][1]  # how far in similarity is w2 to top1
-       simRanktnext = toprank[w2Rank-1][1] - toprank[w2Rank][1]  # how far in similarity is w2 to the next word
-       simRankt10 = toprank[w2Rank-1][1] - toprank[9][1] # how far in similarity is w2 to top10
-       simRankt100 = toprank[w2Rank-1][1] - toprank[99][1] # how far in similarity is w2 to top100
-       simsRankW2 = str(sim)+','+str(w2Rank)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
-       
+       toprank = newSpace.similar_by_vector(vector,topn=nexplore)
+       simsRankW2 = extractSimDiffFeats(w2Rank, toprank)
+       simsRankW2 = str(sim)+','+simsRankW2      
     else:
        return noSimsRank
 
@@ -76,6 +74,22 @@ def extractSemFeatures(w1, w2, l2, proc):
     newSpace = None
 
     return simsRankW2
+
+
+def extractSimDiffFeats(rankDif, toprank):
+    """ Extracts the subset of semantic features related to differences in similarities between
+        words and translations
+    """
+
+    #toprank = mlweSpace.similar_by_vector(vector,topn=nexplore)
+    simRankt1 = toprank[rankDif-1][1] - toprank[0][1]  # how far in similarity is w2 to top1
+    simRanktnext = toprank[rankDif-1][1] - toprank[rankDif][1]  # how far in similarity is w2 to the next word
+    simRankt10 = toprank[rankDif-1][1] - toprank[9][1] # how far in similarity is w2 to top10
+    simRankt100 = toprank[rankDif-1][1] - toprank[99][1] # how far in similarity is w2 to top100
+
+    simsRank = str(rankDif)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
+
+    return simsRank
 
 
 def extractLexFeatures(w1, w2):

@@ -30,7 +30,6 @@ from gensim.models import KeyedVectors
 
 bpeMark = '@@'
 emptyMark = 'EMPTY'
-header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
 
 # for debugging
 countUp = 0 
@@ -116,20 +115,16 @@ def findSimsNonTrad(w1, w2, l2, proc):
           print("kk")
          
        # since all calculations are ready here we use them to estimate WE-related features
+       toprank = newSpace.similar_by_vector(vector,topn=explore)
        # for the negative example
        sim = newSpace.similarity(w1,nonTrad)
-       simRankt1 = toprank[rank-1][1] - toprank[0][1]  # how far in similarity is noTrad to top1
-       simRanktnext = toprank[rank-1][1] - toprank[rank][1]  # how far in similarity is noTrad to the next word
-       simRankt10 = toprank[rank-1][1] - toprank[9][1] # how far in similarity is noTrad to top10
-       simRankt100 = toprank[rank-1][1] - toprank[99][1] # how far in similarity is noTrad to top100
-       simsRankNoTrad = str(sim)+','+str(rank)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
+       simsRankNoTrad = extractSimDiffFeats(rank, toprank)
+       simsRankNoTrad = str(sim)+','+simsRankNoTrad
+
        # for the positive example
        sim = newSpace.similarity(w1,w2)
-       simRankt1 = toprank[w2Rank-1][1] - toprank[0][1]  # how far in similarity is w2 to top1
-       simRanktnext = toprank[w2Rank-1][1] - toprank[w2Rank][1]  # how far in similarity is w2 to the next word
-       simRankt10 = toprank[w2Rank-1][1] - toprank[9][1] # how far in similarity is w2 to top10
-       simRankt100 = toprank[w2Rank-1][1] - toprank[99][1] # how far in similarity is w2 to top100
-       simsRankW2 = str(sim)+','+str(w2Rank)+','+str(simRankt1)+','+str(simRanktnext)+','+str(simRankt10)+','+str(simRankt100)+','
+       simsRankW2 = extractSimDiffFeats(w2Rank, toprank)
+       simsRankW2 = str(sim)+','+simsRankW2
        
     else:
        return noSimsRank,emptyMark,noSimsRank
@@ -173,7 +168,7 @@ def main(inF):
 
     outF = inF+'.feat'
     fOUT = open(outF, 'w')
-    fOUT.write(header)
+    fOUT.write(features.getHeader())
     # Read the quad-lexicon
     with open(inF) as f:
        for line in f:

@@ -47,7 +47,7 @@ class QueryTrad:
         print("..Multilingual lexicon loaded. Using "+str(mem)+" MB of memory")
         self.ctDict = ctDict
 
-       # Load BPE model
+        # Load BPE model
         self.bpe = easyBPE.BPE(self.BPEcodes)
         mem=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         print("..BPE model loaded. Using "+str(mem)+" MB of memory")

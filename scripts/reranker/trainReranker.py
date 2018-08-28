@@ -90,7 +90,7 @@ def main(inF, path):
     X = df4ML.loc[:, feature_cols]
     y = df4ML.Gold
     clf = XGBClassifier(max_depth=6, n_estimators=300, learning_rate=0.05)
-    # TODO: fit parameters
+    # TODO: fit parameters of XGB
     #clf = MLPClassifier(activation='relu', alpha=1e-05, batch_size='auto',
     #   beta_1=0.9, beta_2=0.999, early_stopping=False, epsilon=1e-08, hidden_layer_sizes=(8, 2), learning_rate='constant',
     #   learning_rate_init=0.001, max_iter=200, momentum=0.9, nesterovs_momentum=True, power_t=0.5, random_state=1, shuffle=True,
@@ -110,14 +110,6 @@ def main(inF, path):
     plot_importance(clf)
     plt.show()
 
-    #thresholds = np.sort(clf.feature_importances_)
-    #for thresh in thresholds:
-	# select features using threshold
-    #    selection = SelectFromModel(clf, threshold=thresh, prefit=True)
-    #    select_X = selection.transform(X)
-    #    scores = cross_validate(clf, select_X, y, scoring=scoring, cv=5, return_train_score=False)
-    #    print("Thresh=%.3f, n=%d, Accuracy: %0.4f (+/- %0.4f)" % (thresh, select_X.shape[1], scores['test_accuracy'].mean(), scores['test_accuracy'].std()*2))
-
 
 
 if __name__ == "__main__":
@@ -127,5 +119,16 @@ if __name__ == "__main__":
         sys.exit(1)
     scriptPath = os.path.dirname(os.path.abspath( __file__ ))
     main(sys.argv[1], scriptPath)
+
+
+
+
+    #thresholds = np.sort(clf.feature_importances_)
+    #for thresh in thresholds:
+	# select features using threshold
+    #    selection = SelectFromModel(clf, threshold=thresh, prefit=True)
+    #    select_X = selection.transform(X)
+    #    scores = cross_validate(clf, select_X, y, scoring=scoring, cv=5, return_train_score=False)
+    #    print("Thresh=%.3f, n=%d, Accuracy: %0.4f (+/- %0.4f)" % (thresh, select_X.shape[1], scores['test_accuracy'].mean(), scores['test_accuracy'].std()*2))
 
 
