@@ -12,9 +12,12 @@
 import sys
 import os.path
 import math
+import pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+import features
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVC
@@ -49,8 +52,7 @@ def preprocessingWrite (df, modelPath):
     df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 1000 if x>1000 else x)
     #df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 0 if x<= 0 else math.log10(x))
 	
-    #colums2scale = ['rankW2','WEsim','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
-    colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2','simRankt1','simRankWnext','simRankt10','simRankt100']
+    colums2scale = features.getColums2scale()
     scaler = MinMaxScaler()
     df4ML[colums2scale] = scaler.fit_transform(df4ML[colums2scale])
 
@@ -67,7 +69,7 @@ def main(inF, path):
     fileName = os.path.basename(inF)
     fileName = os.path.splitext(fileName)[0]  # yes, twice, it has 2 extensions
     baseName = modelPath + '' + os.path.splitext(fileName)[0]
-    outModel = baseName +'.model'
+    outModel = baseName +'.model.pkl'
 
     # read original training file
     df = pd.read_csv(inF)
@@ -79,12 +81,8 @@ def main(inF, path):
     # Aply the preprocessing pipeline
     df4ML = preprocessingWrite(df4ML, baseName)
 
-
-    # Original features
-    #feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
     # Features to use
-    feature_cols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
-    #feature_cols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+    feature_cols = features.getFeatureCols()
 
     scoring = ['accuracy', 'precision_macro', 'recall_macro']
     X = df4ML.loc[:, feature_cols]
@@ -105,7 +103,8 @@ def main(inF, path):
 
     print("Accuracy: %0.3f (+/- %0.3f)" % (scores['test_accuracy'].mean(), scores['test_accuracy'].std()*2))
     clf.fit(X, y) 
-    clf.save_model(outModel)
+    pickle.dump(clf, open(outModel, "wb"))
+    #clf.save_model(outModel)
     ##plt.bar(range(len(clf.feature_importances_)), clf.feature_importances_)
     plot_importance(clf)
     plt.show()

@@ -21,10 +21,14 @@ from gensim.models import KeyedVectors
 
 import numpy as np
 import pandas as pd
-from xgboost import XGBClassifier
+import pickle
+import xgboost
+#from xgboost import XGBClassifier
+from sklearn.externals import joblib
 
 trainingSet = 'untradDEallkeys.solr.all-languages'
-bpeMark = '@@'
+explore = 100
+
 
 def preprocessingRead(data):
     """
@@ -45,8 +49,7 @@ def preprocessingRead(data):
     df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 1000 if x>1000 else x)
     #df4ML['rankW2'] = df4ML['rankW2'].apply(lambda x: 0 if x<= 0 else math.log10(x))
 	
-    #colums2scale = ['rankW2','WEsim','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
-    colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2','simRankt1','simRankWnext','simRankt10','simRankt100']
+    colums2scale = features.getColums2scale()
     scaler = joblib.load(modelPath+'reranker/'+trainingSet+'.scaler.pkl') 
     df4ML[colums2scale] = scaler.fit_transform(df4ML[colums2scale])
 
@@ -54,20 +57,21 @@ def preprocessingRead(data):
 
 
 def predictBestTrad(df):
-    """
+    """ Given a previously trained model, it returns the index of the best translation
+        for a test set in a dataframe
     """
 
-    feature_cols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
-    nbest = df.loc[:, feature_cols]
- 
-    clf = xgb.Booster()  # init model
+    nbest = df.loc[:, features.getFeatureCols()]
+    #X = df4ML.loc[:, feature_cols]
+    clf = xgboost.Booster()  # init model
 
     # Load previously trained model
-    clf.load_model(modelPath+'reranker/'+trainingSet+'.model')
-
-    # make prediction, a probability by default with XGB
-    nbestProbs = clf.predict(nbest)  
-    indexTrad = np.argmax(nbestProbs)
+    #clf.load_model(modelPath+'reranker/'+trainingSet+'.model.pkl')
+    clf = pickle.load(open(modelPath+'reranker/'+trainingSet+'.model.pkl', "rb"))
+    # make prediction
+    nbestProbs = clf.predict_proba(nbest)
+    print(nbestProbs)  
+    indexTrad = np.argmax(nbestProbs[:,1])
 
     return indexTrad
 
@@ -179,40 +183,39 @@ def translate(string, proc):
                bped = easyBPE.applyBPE(proc.bpe, word)
                if len(bped) >1:
                   isSubWord = '1'
+               allFeats = features.getHeaderTest()
                for subunit in bped:
-                   print(subunit)
                    vector =  proc.embeddingL1[subunit]
 
-                   enSubunits = proc.embeddingEn.similar_by_vector(vector,topn=1000)
-                   allFeats = features.getHeader()
-                   for subunitTrad in enSubunits:
-                       # populate for a dataframe with the n-best list
-                       w2 = subunit[0]
-                       bothBPE = '0'
-                       if bpeMark in subunit and bpeMark in w2:
-                         bothBPE = '1'
-                       basicFeats = features.basicFeatures(subunit,'xx', w2, 'en', isSubWord, bothBPE)
-                       semFeats = features.extractSemFeatures(subunit, w2, 'en', 40000, proc)
-                       lexFeats = features.extractLexFeatures(subunit, w2)
-                       allFeats = allFeats + basicFeats+semFeats+lexFeats+'\n'
-                    # create preprocessed data frame
-                   df = preprocessingRead(allFeats)
-                   indexTrad = predictBestTrad(df)
-                   trad = enSubunits[indexTrad][0]
-                   print(trad)
+                   for lan in "en", "es", "fr", "de":
+                       if lan == "en":
+                          lanSubunits = proc.embeddingEn.similar_by_vector(vector,topn=explora)
+                       elif lan == "de":
+                          lanSubunits = proc.embeddingDe.similar_by_vector(vector,topn=explora)
+                       elif lan == "es":
+                          lanSubunits = proc.embeddingEs.similar_by_vector(vector,topn=explora)
+                       else:
+                          lanSubunits = proc.embeddingFr.similar_by_vector(vector,topn=explora)
 
-
-
-
-                   #esSubunit = proc.embeddingEs.similar_by_vector(vector,topn=2)
-                   #deSubunit = proc.embeddingDe.similar_by_vector(vector,topn=2)
-                   #frSubunit = proc.embeddingFr.similar_by_vector(vector,topn=2)
-                   #print(enSubunits)
-                   #print(esSubunit)
-                   #print(deSubunit)
-                   #print(frSubunit)
+                       for subunitTrad in lanSubunits:
+                           # populate for a dataframe with the n-best list
+                           w2 = subunitTrad[0]
+                           print(subunit +"   "+ w2)
+                           bothBPE = '0'
+                           if features.getBpeMark() in subunit and features.getBpeMark() in w2:
+                              bothBPE = '1'
+                           basicFeats = features.basicFeatures(subunit,'xx', w2, lan, isSubWord, bothBPE)
+                           semFeats = features.extractSemFeatures(subunit, w2, lan, explora+100, proc)
+                           lexFeats = features.extractLexFeatures(subunit, w2)
+                           allFeats = allFeats + basicFeats+semFeats+lexFeats+'\n'
+                        # create preprocessed data frame
+                       df = preprocessingRead(allFeats)
+                       indexTrad = predictBestTrad(df)
+                       print("index. " + str(indexTrad))
+                       stringTrad = stringTrad + enSubunits[indexTrad][0]
+                       print(stringTrad)
               # we need to reconstruct BPE
-
+            stringTrad = stringTrad + " " +
     return stringTrad
 
 
@@ -223,7 +226,7 @@ def main(inF, scriptPath):
     # Initialise a new process for translation, loading the models
     proc = load.QueryTrad(modelPath)
 
-    outF = inF+'trad'
+    outF = inF+'.trad'
     # Read the queries from file
     fOUT = open(outF, 'w')
     with open(inF) as f:

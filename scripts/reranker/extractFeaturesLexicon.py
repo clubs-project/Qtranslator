@@ -28,9 +28,7 @@ import features
 
 from gensim.models import KeyedVectors
 
-bpeMark = '@@'
 emptyMark = 'EMPTY'
-
 # for debugging
 countUp = 0 
 countDown = 0
@@ -118,12 +116,12 @@ def findSimsNonTrad(w1, w2, l2, proc):
        toprank = newSpace.similar_by_vector(vector,topn=explore)
        # for the negative example
        sim = newSpace.similarity(w1,nonTrad)
-       simsRankNoTrad = extractSimDiffFeats(rank, toprank)
+       simsRankNoTrad = features.extractSimDiffFeats(rank, toprank)
        simsRankNoTrad = str(sim)+','+simsRankNoTrad
 
        # for the positive example
        sim = newSpace.similarity(w1,w2)
-       simsRankW2 = extractSimDiffFeats(w2Rank, toprank)
+       simsRankW2 = features.extractSimDiffFeats(w2Rank, toprank)
        simsRankW2 = str(sim)+','+simsRankW2
        
     else:
@@ -156,17 +154,17 @@ def sourceLang(entry):
     return language
 
 
-def main(inF):
+def main(inF, scriptPath):
 
     isWord='0'
     isSubword='1'
 
     # Initialise a new process for translation, loading the models
     # Loads more stuff than we need, we should parametrise that
-    modelPath = "../../models/"
+    modelPath = scriptPath + '/../../models/'
     proc = load.QueryTrad(modelPath)
 
-    outF = inF+'.feat'
+    outF = inF+'.feat2'
     fOUT = open(outF, 'w')
     fOUT.write(features.getHeader())
     # Read the quad-lexicon
@@ -187,9 +185,17 @@ def main(inF):
 
            single = True
            subunits = True
-           for i in range(1, len(entries)):
-               l = entries[i].split(":")[0]  # language
-               t = entries[i].split(":")[1]  # token
+           for i in range(0, len(entries)):     # i've changed to 0 to include the source language
+               if i>=1:
+                  l = entries[i].split(":")[0]  # language
+                  t = entries[i].split(":")[1]  # token
+               else:
+                  randElement = np.random.choice([True, False], size=1, p=[1./6, 5./6])
+                  if randElement:
+                     l = src_lang
+                     t = source_word
+                  else:
+                     continue
                tmultiple = t.split(' ')
                if len(tmultiple) > 1:   # For learning we only want one-to-one translations in
                   single = False        # all the languages simultaneousy to have a balanced corpus
@@ -210,7 +216,7 @@ def main(inF):
                   featsPos = features.extractLexFeatures(source_word, t)
                   entriesOutput = entriesOutput +"1,"+ pairPos + simsRankW2 + featsPos +"\n"
                   # add features for a negative example in case there is one 
-                  if tNeg is not "EMPTY":
+                  if tNeg != emptyMark:
                      pairNeg = features.basicFeatures(source_word,src_lang,tNeg,l,isWord,bothBPE)
                      featsNeg = features.extractLexFeatures(source_word, tNeg)
                      entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
@@ -218,13 +224,13 @@ def main(inF):
                else:
                   for subunit_src, subunit_tgt in zip(units, tunits):
                       bothBPE = '0'
-                      if bpeMark in subunit_src and bpeMark in subunit_tgt:
+                      if features.getBpeMark() in subunit_src and features.getBpeMark() in subunit_tgt:
                          bothBPE = '1'
                       simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(subunit_src, subunit_tgt, l, proc)
                       pairPos = features.basicFeatures(subunit_src,src_lang,subunit_tgt,l,isSubword,bothBPE)
                       featsPos = features.extractLexFeatures(subunit_src, subunit_tgt)
                       entriesOutput = entriesOutput +"1,"+ pairPos + simsRankW2 + featsPos +"\n" 
-                      if tNeg is not "EMPTY":
+                      if tNeg != emptyMark:
                          pairNeg = features.basicFeatures(subunit_src,src_lang,tNeg,l,isSubword,bothBPE)
                          featsNeg = features.extractLexFeatures(subunit_src, tNeg)
                          entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
@@ -249,5 +255,6 @@ if __name__ == "__main__":
     if len(sys.argv) is not 2:
         sys.stderr.write('Usage: python3 %s lexiconFile\n' % sys.argv[0])
         sys.exit(1)
-    main(sys.argv[1])
+    scriptPath = os.path.dirname(os.path.abspath( __file__ ))
+    main(sys.argv[1], scriptPath)
 

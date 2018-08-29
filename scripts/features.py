@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-""" Module with functions to calculate semantic and lexical features
+""" Module with functions and constants to calculate semantic and lexical features
 
     Date: 27.08.2018
     Author: cristinae
@@ -18,11 +18,30 @@ import Levenshtein
 import phonetics
 
 bpeMark = '@@'
-header = 'Gold,w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+headerTest = 'w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+header = 'Gold,'+headerTest
+#colums2scale = ['rankW2','WEsim','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2','simRankt1','simRankWnext','simRankt10','simRankt100']
+featureCols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+# Original features
+#feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
 
 
 def getHeader():
     return header
+
+def getHeaderTest():
+    return headerTest
+
+def getColums2scale():
+    return colums2scale
+
+def getFeatureCols():
+    return featureCols
+
+def getBpeMark():
+    return bpeMark
+
 
 def basicFeatures(w1, l1, w2, l2, isSubWord, bothBPE):
     '''
