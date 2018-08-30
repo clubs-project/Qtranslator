@@ -27,7 +27,7 @@ import xgboost
 from sklearn.externals import joblib
 
 trainingSet = 'untradDEallkeys.solr.all-languages'
-explore = 100
+explora = 10
 
 
 def preprocessingRead(data):
@@ -40,7 +40,7 @@ def preprocessingRead(data):
 
     # extract the data into a dataframe
     df = pd.read_csv(StringIO(data))
-
+ 
     # convert categorical column in four binary columns, one per language
     df4ML = df.join(pd.get_dummies(df['L2'],prefix='L2'))
 
@@ -62,6 +62,7 @@ def predictBestTrad(df):
     """
 
     nbest = df.loc[:, features.getFeatureCols()]
+
     #X = df4ML.loc[:, feature_cols]
     clf = xgboost.Booster()  # init model
 
@@ -70,7 +71,7 @@ def predictBestTrad(df):
     clf = pickle.load(open(modelPath+'reranker/'+trainingSet+'.model.pkl', "rb"))
     # make prediction
     nbestProbs = clf.predict_proba(nbest)
-    print(nbestProbs)  
+    #print(nbestProbs)
     indexTrad = np.argmax(nbestProbs[:,1])
 
     return indexTrad
@@ -130,6 +131,14 @@ def checkCase(toCheck, ctDict):
        toTrad = toCheck
     return capitalized, toTrad
 
+def recoverCasing(word, capitalized):
+    """ Recovers the initial capitalisation of a word
+    """
+    if capitalized == True:
+       word = word.capitalize()
+    else:
+       word = word.lower()
+    return word
 
 def extractTradFromDict(toTrad, capitalized, stringTrad, ctDict):
     """ Extracts the translation in the four languages of a term in the lexicon
@@ -140,11 +149,8 @@ def extractTradFromDict(toTrad, capitalized, stringTrad, ctDict):
     trads = entries.split("|||")
     for trad in trads:
         (lang, translation) = trad.split(":")
-         # recover the source casing in the translation
-        if capitalized == True:
-           translation = translation.capitalize()
-        else:
-           translation = translation.lower()
+        # recover the source casing in the translation
+        translation = recoverCasing(translation, capitalized)
         stringTrad = stringTrad + " "+lang+"::"+translation
     return stringTrad
 
@@ -158,64 +164,79 @@ def translate(string, proc):
     swList = proc.getSWlist()
     string=cleanEndString(string)
     capitalized, toTrad =  checkCase(string, ctDict)
-    print(toTrad)
+    # print(toTrad)
     stringTrad = ""
     # First we check if the full phrase is in the lexicon
     if toTrad in ctDict:
        stringTrad = extractTradFromDict(toTrad, capitalized, stringTrad, ctDict)
     else:
-        words = toTrad.split()
-        # if it is not we split by word
-        stringTrad = ""
-        for word in words:
-        # we ignore any word that is a stopword in any language
-            if word in swList:
-               continue
-        # and check if they are in the lexicon
-            capitalized, toTrad =  checkCase(string, ctDict)
-            if toTrad in swList:
-               continue
-            if toTrad in ctDict:
-               stringTrad = stringTrad + extractTradFromDict(toTrad, capitalized, stringTrad, ctDict)
-            else:
-            # if not, we look for the closest translation(s) in the embeddings space
-               isSubWord = '0'
-               bped = easyBPE.applyBPE(proc.bpe, word)
-               if len(bped) >1:
-                  isSubWord = '1'
-               allFeats = features.getHeaderTest()
-               for subunit in bped:
-                   vector =  proc.embeddingL1[subunit]
+       words = toTrad.split()
+       # if it is not we split by word
+       stringTrad = ''
+       for word in words:
+           # we check if words are in the lexicon
+           capitalized, toTrad =  checkCase(string, ctDict)
+           # we ignore any word that is a stopword in any language
+           if word in swList:
+              stringTrad = stringTrad + " ##SW##"
+           elif toTrad in ctDict:
+              stringTrad = stringTrad + extractTradFromDict(toTrad, capitalized, stringTrad, ctDict)
+           else:
+           # if not, we look for the closest translation(s) in the embeddings space
+              isSubWord = '0'
+              bped = easyBPE.applyBPE(proc.bpe, word)
+              if len(bped) >1:
+                 isSubWord = '1'
+              wordEn = ''
+              wordEs = ''
+              wordDe = ''
+              wordFr = ''
+              for subunit in bped:
+                  vector =  proc.embeddingL1[subunit]
+                  for lan in "en", "es", "fr", "de":
+                      if lan == "en":
+                         lanSubunits = proc.embeddingEn.similar_by_vector(vector,topn=explora)
+                      elif lan == "de":
+                         lanSubunits = proc.embeddingDe.similar_by_vector(vector,topn=explora)
+                      elif lan == "es":
+                         lanSubunits = proc.embeddingEs.similar_by_vector(vector,topn=explora)
+                      else:
+                         lanSubunits = proc.embeddingFr.similar_by_vector(vector,topn=explora)
 
-                   for lan in "en", "es", "fr", "de":
-                       if lan == "en":
-                          lanSubunits = proc.embeddingEn.similar_by_vector(vector,topn=explora)
-                       elif lan == "de":
-                          lanSubunits = proc.embeddingDe.similar_by_vector(vector,topn=explora)
-                       elif lan == "es":
-                          lanSubunits = proc.embeddingEs.similar_by_vector(vector,topn=explora)
-                       else:
-                          lanSubunits = proc.embeddingFr.similar_by_vector(vector,topn=explora)
+                      allFeats = features.getHeaderTest()
+                      for subunitTrad in lanSubunits:
+                          # populate for a dataframe with the n-best list
+                          w2 = subunitTrad[0]
+                          #print(subunit +"   "+ w2)
+                          bothBPE = '0'
+                          if features.getBpeMark() in subunit and features.getBpeMark() in w2:
+                             bothBPE = '1'
+                          basicFeats = features.basicFeatures(subunit,'xx', w2, lan, isSubWord, bothBPE)
+                          semFeats = features.extractSemFeatures(subunit, w2, lan, explora+100, proc)
+                          lexFeats = features.extractLexFeatures(subunit, w2)
+                          allFeats = allFeats + basicFeats+semFeats + lexFeats +'\n'
+                      # create preprocessed data frame
+                      df = preprocessingRead(allFeats)
+                      indexTrad = predictBestTrad(df)
+                      # reconstructing BPE without BPE mark
+                      #print("index: "+str(indexTrad))
+                      if lan == "en":
+                         wordEn = wordEn+lanSubunits[indexTrad][0]
+                      elif lan == "de":
+                         wordDe = wordDe+lanSubunits[indexTrad][0]
+                      elif lan == "es":
+                         wordEs = wordEs+lanSubunits[indexTrad][0]
+                      else:
+                         wordFr = wordFr+lanSubunits[indexTrad][0]
 
-                       for subunitTrad in lanSubunits:
-                           # populate for a dataframe with the n-best list
-                           w2 = subunitTrad[0]
-                           print(subunit +"   "+ w2)
-                           bothBPE = '0'
-                           if features.getBpeMark() in subunit and features.getBpeMark() in w2:
-                              bothBPE = '1'
-                           basicFeats = features.basicFeatures(subunit,'xx', w2, lan, isSubWord, bothBPE)
-                           semFeats = features.extractSemFeatures(subunit, w2, lan, explora+100, proc)
-                           lexFeats = features.extractLexFeatures(subunit, w2)
-                           allFeats = allFeats + basicFeats+semFeats+lexFeats+'\n'
-                        # create preprocessed data frame
-                       df = preprocessingRead(allFeats)
-                       indexTrad = predictBestTrad(df)
-                       print("index. " + str(indexTrad))
-                       stringTrad = stringTrad + enSubunits[indexTrad][0]
-                       print(stringTrad)
-              # we need to reconstruct BPE
-            stringTrad = stringTrad + " " +
+              wordEn = recoverCasing(wordEn, capitalized)
+              wordEs = recoverCasing(wordEs, capitalized)
+              wordDe = recoverCasing(wordDe, capitalized)
+              wordFr = recoverCasing(wordFr, capitalized)
+              stringTrad = stringTrad + " en::"+wordEn + " es::"+wordEs + " de::"+wordDe + " fr::"+wordFr
+              #print(stringTrad)
+              stringTrad = stringTrad.replace(features.getBpeMark(), '')
+
     return stringTrad
 
 
@@ -248,7 +269,7 @@ def main(inF, scriptPath):
                termTrad = "'" + stringTrad
                lineTrad = lineTrad + termTrad + "', "
            #rof termsArray
-           lineTrad = rreplace(lineTrad, "', ", "", 2) + "]"
+           lineTrad = rreplace(lineTrad, ", ", "", 1) + "]"
            fOUT.write(lineTrad+"\n")
 
     fOUT.close()   
