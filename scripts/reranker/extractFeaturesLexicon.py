@@ -28,12 +28,12 @@ import features
 
 from gensim.models import KeyedVectors
 
-emptyMark = 'EMPTY'
+emptyMark = features.getEmptyMark()
 # for debugging
 countUp = 0 
 countDown = 0
 
-def findSimsNonTrad(w1, w2, l2, proc):
+def findSimsNonTrad(w1, w2, prevw1, prevw2, l2, proc):
     '''
     Find a word nonTrad which is close to the true translation of w1, w2, but it is not.
     Currently we use the word that is +1 or -1 in the cosine similarity ranking. 
@@ -46,9 +46,10 @@ def findSimsNonTrad(w1, w2, l2, proc):
     global countDown
     noSimsRank = '0,0,0,0,0,0,'
     #WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100
+    noPrev = '1,1,'
 
     if w1 not in proc.embeddingL1.vocab:
-       return noSimsRank,emptyMark,noSimsRank
+       return noSimsRank+noPrev,emptyMark,noSimsRank+noPrev
 
     #TODO I probably can do everything with L1, and use vocabularies for languages
     vector =  proc.embeddingL1[w1]
@@ -69,12 +70,13 @@ def findSimsNonTrad(w1, w2, l2, proc):
     # add the source word to the target language subspace
     # since que cannot remove a word afterwards we create a new space
     newSpace.add(w1,vector,replace=True)
+
     maxSize = len(newSpace.vocab)
     # we look for a non-translation 
     if w2 in newSpace.vocab:
        w2Rank = newSpace.rank(w1,w2)
        if w2Rank>20000:  # we are not going to rerank so many and introduces errors
-          return noSimsRank,emptyMark,noSimsRank
+          return noSimsRank+noPrev,emptyMark,noSimsRank+noPrev
        if w2Rank == 1:           # if w1 was the top1 we can only do rank+1
           rank = 2
           countUp = countUp+1
@@ -108,7 +110,7 @@ def findSimsNonTrad(w1, w2, l2, proc):
        # does not keep track of the index of a new added word
        if rank <= len(toprank):
           nonTrad = toprank[rank-1][0]
-       else:   # This should not happen but happens without the cut at 20000 (error above)
+       else:   # This should not happen but happened without the cut at 20000 (error above)
           nonTrad = toprank[len(toprank)-1][0]
           print("kk")
          
@@ -116,16 +118,18 @@ def findSimsNonTrad(w1, w2, l2, proc):
        toprank = newSpace.similar_by_vector(vector,topn=explore)
        # for the negative example
        sim = newSpace.similarity(w1,nonTrad)
+       featsLM = features.extractSimBigram(w1, nonTrad, prevw1, prevw2, proc, newSpace)
        simsRankNoTrad = features.extractSimDiffFeats(rank, toprank)
-       simsRankNoTrad = str(sim)+','+simsRankNoTrad
+       simsRankNoTrad = str(sim)+','+simsRankNoTrad+featsLM
 
        # for the positive example
        sim = newSpace.similarity(w1,w2)
+       featsLM = features.extractSimBigram(w1, w2, prevw1, prevw2, proc, newSpace)
        simsRankW2 = features.extractSimDiffFeats(w2Rank, toprank)
-       simsRankW2 = str(sim)+','+simsRankW2
+       simsRankW2 = str(sim)+','+simsRankW2+featsLM
        
     else:
-       return noSimsRank,emptyMark,noSimsRank
+       return noSimsRank+noPrev,emptyMark,noSimsRank+noPrev
 
     # cleaning
     newSpace = None
@@ -164,7 +168,7 @@ def main(inF, scriptPath):
     modelPath = scriptPath + '/../../models/'
     proc = load.QueryTrad(modelPath)
 
-    outF = inF+'.feat2'
+    outF = inF+'.feat'
     fOUT = open(outF, 'w')
     fOUT.write(features.getHeader())
     # Read the quad-lexicon
@@ -185,7 +189,7 @@ def main(inF, scriptPath):
 
            single = True
            subunits = True
-           for i in range(0, len(entries)):     # i've changed to 0 to include the source language
+           for i in range(0, len(entries)):     # I've changed to 0 to include the source language
                if i>=1:
                   l = entries[i].split(":")[0]  # language
                   t = entries[i].split(":")[1]  # token
@@ -202,13 +206,13 @@ def main(inF, scriptPath):
                   break
                tunits = easyBPE.applyBPE(proc.bpe, t)
                if len(tunits) != len(units):  # we only keep n-to-n pairs in all the languages
-                  subunits = False            # simultaneousy to have a balanced corpus
+                  subunits = False            # simultaneousy also to have a balanced corpus
                   break
 
                if len(units)==1:
                   # we look for a negative example (bad translation of source_word)
-                  # and retrieve semantic features for them
-                  simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(source_word, t, l, proc)
+                  # and retrieve semantic features for the positive and negative example
+                  simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(source_word, t, emptyMark, emptyMark, l, proc)
                   # basic and semantic features features  
                   bothBPE = '0'
                   pairPos = features.basicFeatures(source_word,src_lang,t,l,isWord,bothBPE)
@@ -220,13 +224,15 @@ def main(inF, scriptPath):
                      pairNeg = features.basicFeatures(source_word,src_lang,tNeg,l,isWord,bothBPE)
                      featsNeg = features.extractLexFeatures(source_word, tNeg)
                      entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
-               # if the input token has been bped do the same for all the subunits
+               # if the input token has been bped we do the same for all the subunits
                else:
+                  prev_src = emptyMark
+                  prev_tgt = emptyMark
                   for subunit_src, subunit_tgt in zip(units, tunits):
                       bothBPE = '0'
                       if features.getBpeMark() in subunit_src and features.getBpeMark() in subunit_tgt:
                          bothBPE = '1'
-                      simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(subunit_src, subunit_tgt, l, proc)
+                      simsRankW2, tNeg, simsRankNoTrad = findSimsNonTrad(subunit_src, subunit_tgt, prev_src, prev_tgt, l, proc)
                       pairPos = features.basicFeatures(subunit_src,src_lang,subunit_tgt,l,isSubword,bothBPE)
                       featsPos = features.extractLexFeatures(subunit_src, subunit_tgt)
                       entriesOutput = entriesOutput +"1,"+ pairPos + simsRankW2 + featsPos +"\n" 
@@ -234,6 +240,8 @@ def main(inF, scriptPath):
                          pairNeg = features.basicFeatures(subunit_src,src_lang,tNeg,l,isSubword,bothBPE)
                          featsNeg = features.extractLexFeatures(subunit_src, tNeg)
                          entriesOutput = entriesOutput +"0,"+ pairNeg + simsRankNoTrad + featsNeg +"\n" 
+                      prev_src = subunit_src
+                      prev_tgt = subunit_tgt
 
            if (single == False):     
                continue

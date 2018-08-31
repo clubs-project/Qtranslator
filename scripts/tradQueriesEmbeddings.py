@@ -194,16 +194,24 @@ def translate(string, proc):
               for subunit in bped:
                   vector =  proc.embeddingL1[subunit]
                   for lan in "en", "es", "fr", "de":
-                      if lan == "en":
-                         lanSubunits = proc.embeddingEn.similar_by_vector(vector,topn=explora)
-                      elif lan == "de":
-                         lanSubunits = proc.embeddingDe.similar_by_vector(vector,topn=explora)
-                      elif lan == "es":
-                         lanSubunits = proc.embeddingEs.similar_by_vector(vector,topn=explora)
-                      else:
-                         lanSubunits = proc.embeddingFr.similar_by_vector(vector,topn=explora)
+                      try:
+                        if lan == "en":
+                           lanSpace = proc.embeddingEn
+                        elif lan == "de":
+                           lanSpace = proc.embeddingDe
+                        elif lan == "es":
+                           lanSpace = proc.embeddingEs
+                        elif lan == "fr":
+                           lanSpace = proc.embeddingFr
+                      except ValueError:
+                        lanSpace = None 
+                        print("No correct language specified")   
+
+                      lanSubunits = lanSpace.similar_by_vector(vector,topn=explora)
 
                       allFeats = features.getHeaderTest()
+                      prevw1 = features.getEmptyMark()
+                      prevw2 = features.getEmptyMark()
                       for subunitTrad in lanSubunits:
                           # populate for a dataframe with the n-best list
                           w2 = subunitTrad[0]
@@ -213,8 +221,12 @@ def translate(string, proc):
                              bothBPE = '1'
                           basicFeats = features.basicFeatures(subunit,'xx', w2, lan, isSubWord, bothBPE)
                           semFeats = features.extractSemFeatures(subunit, w2, lan, explora+100, proc)
+                          lmFeats = features.extractSimBigram(subunit, w2, prevw1, prevw2, proc, lanSpace)
                           lexFeats = features.extractLexFeatures(subunit, w2)
-                          allFeats = allFeats + basicFeats+semFeats + lexFeats +'\n'
+                          allFeats = allFeats + basicFeats+semFeats+lmFeats + lexFeats +'\n'
+                          prevw1 = subunit
+                          prevw2 = w2
+
                       # create preprocessed data frame
                       df = preprocessingRead(allFeats)
                       indexTrad = predictBestTrad(df)

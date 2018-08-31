@@ -18,15 +18,17 @@ import Levenshtein
 import phonetics
 
 bpeMark = '@@'
-headerTest = 'w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
+emptyMark = 'EMPTY'
+headerTest = 'w1,L1,w2,L2,srcSubUnit,bothBPEmark,WEsim,rankW2,simRankt1,simRankWnext,simRankt10,simRankt100,simPrev,simBigram,l1,l2,l1/l2,lev,cosSimN2,cosSimN3,cosSimN4,levM2\n'
 header = 'Gold,'+headerTest
 #colums2scale = ['rankW2','WEsim','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
 colums2scale = ['rankW2','l1','l2','l1/l2','lev','levM2','simRankt1','simRankWnext','simRankt10','simRankt100']
-featureCols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+featureCols = ['L2_de','L2_en','L2_es','L2_fr','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','simPrev','simBigram','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
 # Original features
-#feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
+#feature_cols = ['w1','L1','w2','L2','srcSubUnit','bothBPEmark','WEsim','rankW2','simRankt1','simRankWnext','simRankt10','simRankt100','simPrev','simBigram','l1','l2','l1/l2','lev','cosSimN2','cosSimN3','cosSimN4','levM2']
 
 
+''' Getters '''
 def getHeader():
     return header
 
@@ -42,12 +44,16 @@ def getFeatureCols():
 def getBpeMark():
     return bpeMark
 
+def getEmptyMark():
+    return emptyMark
+
 
 def basicFeatures(w1, l1, w2, l2, isSubWord, bothBPE):
     '''
     Creates a string with a cvs format for the basic features
     '''
     return w1+","+l1+","+ w2+","+l2+","+isSubWord+","+bothBPE+","
+
 
 def extractSemFeatures(w1, w2, l2, nexplore, proc):
     '''
@@ -95,10 +101,30 @@ def extractSemFeatures(w1, w2, l2, nexplore, proc):
     return simsRankW2
 
 
+def extractSimBigram(w1, w2, prevw1, prevw2, proc, lanSpace):
+    '''
+    Extracts features for bigrams
+    '''
+
+    noPrev = '1,1,'
+    if prevw1 != emptyMark and prevw1 in proc.embeddingL1.vocab and prevw2 in lanSpace.vocab:
+       vectorPrev =  proc.embeddingL1[prevw1]
+       lanSpace.add(prevw1,vectorPrev,replace=True)
+       simPrev = lanSpace.similarity(prevw1,prevw2)
+       # average vectors for all items in A, average vectors for B, take cosine between the two averages
+       simBigram = lanSpace.n_similarity([prevw1, w1], [prevw2, w2])
+       featsLM = str(simPrev)+','+str(simBigram)+','
+    else:
+       featsLM = noPrev
+
+    return featsLM
+
+
 def extractSimDiffFeats(rankDif, toprank):
-    """ Extracts the subset of semantic features related to differences in similarities between
-        words and translations
-    """
+    '''
+    Extracts the subset of semantic features related to differences in similarities between
+    words and translations
+    '''
 
     #toprank = mlweSpace.similar_by_vector(vector,topn=nexplore)
     simRankt1 = toprank[rankDif-1][1] - toprank[0][1]  # how far in similarity is w2 to top1
